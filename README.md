@@ -19,7 +19,7 @@ Die Bereitstellung erfolgt über diesen Button:
 
 ## Wie Sie dieses Repository nutzen können
 
-Dieses Quellcode-Repository wurde für die Mitwirkenden entwickelt und arbeitet mit dem [our documentation repository](https://github.com/Azure/arc_jumpstart_docs). Es ist zwar nicht zwingend erforderlich, aber es ist höchstwahrscheinlich, dass Mitwirkende beide Repositories klonen sollten, um effektiv zu Arc Jumpstart beizutragen.
+Dieses Quellcode-Repository wurde für die Mitwirkenden entwickelt und nutzt die [Dokumentation](https://github.com/Azure/arc_jumpstart_docs). Es ist zwar nicht zwingend erforderlich, aber es wird empfohlen, dass Mitwirkende beide Repositories klonen sollten, um effektiv zu Arc Jumpstart beizutragen.
 
 Bevor Sie beginnen, empfehlen wir Ihnen, sich mit unserem umfassenden [contribution guidelines](https://aka.ms/JumpstartContribution). In diesen Leitlinien werden die von uns befolgten Standards und Praktiken dargelegt, um die Konsistenz und Qualität unserer Dokumentation zu gewährleisten.
 
