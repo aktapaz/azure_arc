@@ -123,7 +123,7 @@ Set-VMHost -EnableEnhancedSessionMode $true
 
 Write-Host "Fetching Nested VMs"
 Write-Host "`n"
-$sourceFolder = 'https://jsvhds.blob.core.windows.net/arcbox'
+$sourceFolder = 'https://jumpstartprodsg.blob.core.windows.net/arcbox'
 
 $Env:AZCOPY_BUFFER_GB=4
 Write-Output "Downloading nested VMs VHDX file for SQL. This can take some time, hold tight..."
@@ -224,7 +224,7 @@ az k8s-extension create --name arc-data-services `
                         --resource-group $Env:resourceGroup `
                         --auto-upgrade false `
                         --scope cluster `
-                        --version 1.29.0 `
+                        --version 1.32.0 `
                         --release-namespace arc `
                         --config Microsoft.CustomLocation.ServiceAccount=sa-arc-bootstrapper `
 

@@ -1,4 +1,4 @@
-# Azure Arc Jumpstart source code
+# Arc Jumpstart source code
 
 Willkommen im Arc Jumpstart-Quellcode-Repository! Dieses Repository ist Ihre erste Anlaufstelle für die Arbeit mit den Automatisierungsskripten und -tools von Arc Jumpstart und dient als Backend-Quellcode-Repository, das unsere Website ergänzt.
 

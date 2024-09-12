@@ -9,6 +9,21 @@ $starttime = Get-Date
 $HCIBoxConfig = Import-PowerShellDataFile -Path $Env:HCIBoxConfigFile
 
 #region functions
+function ConvertFrom-SecureStringToPlainText {
+    param (
+        [Parameter(Mandatory = $true)]
+        [System.Security.SecureString]$SecureString
+    )
+    
+    $Ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)
+    try {
+        return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
+    }
+    finally {
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
+    }
+}
+
 function BITSRequest {
     param (
         [Parameter(Mandatory=$True)]
@@ -624,7 +639,7 @@ function Set-NICs {
             Get-NetAdapter ((Get-NetAdapterAdvancedProperty | Where-Object {$_.DisplayValue -eq "SDN"}).Name) | Rename-NetAdapter -NewName FABRIC
             # Get-Netadapter ((Get-NetAdapterAdvancedProperty | Where-Object {$_.DisplayValue -eq "SDN2"}).Name) | Rename-NetAdapter -NewName FABRIC2
 
-            # Enable CredSSP and MTU Settings
+            # Enable CredSSP Settings
             Invoke-Command -ComputerName localhost -Credential $using:Credential -ScriptBlock {
                 $fqdn = $Using:HCIBoxConfig.SDNDomainFQDN
 
@@ -721,11 +736,6 @@ function Set-FabricNetwork {
         Start-Sleep -Seconds 15
         New-NetIPAddress -IPAddress $internetIP -PrefixLength 24 -InterfaceIndex $internetIndex -DefaultGateway $internetGW -AddressFamily IPv4 | Out-Null
         Set-DnsClientServerAddress -InterfaceIndex $internetIndex -ServerAddresses ($HCIBoxConfig.natDNS) | Out-Null
-
-        # Enable Large MTU
-        Write-Host "Configuring MTU on all Adapters"
-        Get-NetAdapter | Where-Object { $_.Status -eq "Up" -and $_.Name -ne "Ethernet" } | Set-NetAdapterAdvancedProperty -RegistryValue $HCIBoxConfig.SDNLABMTU -RegistryKeyword "*JumboPacket"
-        Start-Sleep -Seconds 15
 
         # Provision Public and Private VIP Route
         New-NetRoute -DestinationPrefix $HCIBoxConfig.PublicVIPSubnet -NextHop $provGW -InterfaceAlias PROVIDER | Out-Null
@@ -1112,10 +1122,7 @@ function New-RouterVM {
             #     Add-BgpPeer @params -PassThru
             # }
 
-            # Enable Large MTU
-            Write-Host "Configuring MTU on all Adapters"
-            Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Set-NetAdapterAdvancedProperty -RegistryValue $HCIBoxConfig.SDNLABMTU -RegistryKeyword "*JumboPacket"
-        }
+       }
     }
 }
 
@@ -1196,8 +1203,6 @@ function New-AdminCenterVM {
 
             Write-Host "Rename Network Adapter in $VMName"
             Get-NetAdapter | Rename-NetAdapter -NewName Fabric
-            Write-Host "Configuring MTU on all Adapters"
-            Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Set-NetAdapterAdvancedProperty -RegistryValue $HCIBoxConfig.SDNLABMTU -RegistryKeyword "*JumboPacket"
 
             # Set Gateway
             $index = (Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.netconnectionid -eq "Fabric" }).InterfaceIndex
@@ -1458,6 +1463,21 @@ function Set-HCIDeployPrereqs {
             $resourceGroup = $args[4]
             $location = $args[5]
 
+            function ConvertFrom-SecureStringToPlainText {
+                param (
+                    [Parameter(Mandatory = $true)]
+                    [System.Security.SecureString]$SecureString
+                )
+                
+                $Ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)
+                try {
+                    return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($Ptr)
+                }
+                finally {
+                    [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Ptr)
+                }
+            }
+            
             # Prep nodes for Azure Arc onboarding
             winrm quickconfig -quiet
             netsh advfirewall firewall add rule name="ICMP Allow incoming V4 echo request" protocol=icmpv4:8,any dir=in action=allow
@@ -1476,14 +1496,14 @@ function Set-HCIDeployPrereqs {
             Install-Module Az.Resources -Force
             $azureAppCred = (New-Object System.Management.Automation.PSCredential $clientId, (ConvertTo-SecureString -String $clientSecret -AsPlainText -Force))
             Connect-AzAccount -ServicePrincipal -SubscriptionId $subId -TenantId $tenantId -Credential $azureAppCred
-            $armtoken = Get-AzAccessToken
+            $armtoken = ConvertFrom-SecureStringToPlainText -SecureString ((Get-AzAccessToken -AsSecureString).Token)
 
             # Workaround for BITS transfer issue
             Get-NetAdapter StorageA | Disable-NetAdapter -Confirm:$false | Out-Null
             Get-NetAdapter StorageB | Disable-NetAdapter -Confirm:$false | Out-Null
 
             #Invoke the registration script.
-            Invoke-AzStackHciArcInitialization -SubscriptionID $subId -ResourceGroup $resourceGroup -TenantID $tenantId -Region $location -Cloud "AzureCloud" -ArmAccessToken $armtoken.Token -AccountID $clientId
+            Invoke-AzStackHciArcInitialization -SubscriptionID $subId -ResourceGroup $resourceGroup -TenantID $tenantId -Region $location -Cloud "AzureCloud" -ArmAccessToken $armtoken -AccountID $clientId
 
             Get-NetAdapter StorageA | Enable-NetAdapter -Confirm:$false | Out-Null
             Get-NetAdapter StorageB | Enable-NetAdapter -Confirm:$false | Out-Null
@@ -1755,7 +1775,7 @@ Set-HCIDeployPrereqs -HCIBoxConfig $HCIBoxConfig -localCred $localCred -domainCr
 
 Write-Host "[Build cluster - Step 10/11] Validate cluster deployment..." -ForegroundColor Green
 
-if ($env:autoDeployClusterResource) {
+if ("True" -eq $env:autoDeployClusterResource) {
 
 $TemplateFile = Join-Path -Path $env:HCIBoxDir -ChildPath "hci.json"
 $TemplateParameterFile = Join-Path -Path $env:HCIBoxDir -ChildPath "hci.parameters.json"
@@ -1770,7 +1790,7 @@ if ($ClusterValidationDeployment.ProvisioningState -eq "Succeeded") {
     Write-Host "Validation succeeded. Deploying HCI cluster..."
     New-AzResourceGroupDeployment -Name 'hcicluster-deploy' -ResourceGroupName $env:resourceGroup -TemplateFile $TemplateFile -deploymentMode "Deploy" -TemplateParameterFile $TemplateParameterFile -OutVariable ClusterDeployment
 
-    if ($env:autoUpgradeClusterResource -and $ClusterDeployment.ProvisioningState -eq "Succeeded") {
+    if ("True" -eq $env:autoUpgradeClusterResource -and $ClusterDeployment.ProvisioningState -eq "Succeeded") {
 
         Write-Host "Deployment succeeded. Upgrading HCI cluster..."
 
@@ -1792,7 +1812,7 @@ else {
 
 }
 else {
-    Write-Host '$autoDeployClusterResource is false, skipping HCI cluster deployment...follow the documentation to deploy the cluster manually'
+    Write-Host '$autoDeployClusterResource is false, skipping HCI cluster deployment. If desired, follow the documentation to deploy the cluster manually'
 }
 
 

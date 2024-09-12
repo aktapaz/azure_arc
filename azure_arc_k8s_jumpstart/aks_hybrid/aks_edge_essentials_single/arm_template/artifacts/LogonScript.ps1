@@ -3,12 +3,11 @@ Start-Transcript -Path C:\Temp\LogonScript.log
 ## Deploy AKS EE
 
 # Parameters
-$AksEdgeRemoteDeployVersion = "1.0.230221.1200"
-$schemaVersion = "1.1"
+$AksEdgeRemoteDeployVersion = "1.7.639.0"
 $versionAksEdgeConfig = "1.0"
 $aksEdgeDeployModules = "main"
 $aksEEReleasesUrl = "https://api.github.com/repos/Azure/AKS-Edge/releases"
-
+$AKSEEPinnedSchemaVersion = $Env:AKSEEPinnedSchemaVersion
 # Requires -RunAsAdministrator
 
 New-Variable -Name AksEdgeRemoteDeployVersion -Value $AksEdgeRemoteDeployVersion -Option Constant -ErrorAction SilentlyContinue
@@ -27,24 +26,27 @@ if ($env:kubernetesDistribution -eq "k8s") {
 }
 
 Write-Host "Fetching the latest AKS Edge Essentials release."
-$latestReleaseTag = (Invoke-WebRequest $aksEEReleasesUrl | ConvertFrom-Json)[0].tag_name
-
-$AKSEEReleaseDownloadUrl = "https://github.com/Azure/AKS-Edge/archive/refs/tags/$latestReleaseTag.zip"
-$output = Join-Path "C:\temp" "$latestReleaseTag.zip"
-Invoke-WebRequest $AKSEEReleaseDownloadUrl -OutFile $output
-Expand-Archive $output -DestinationPath "C:\temp" -Force
-$AKSEEReleaseConfigFilePath = "C:\temp\AKS-Edge-$latestReleaseTag\tools\aksedge-config.json"
-$jsonContent = Get-Content -Raw -Path $AKSEEReleaseConfigFilePath | ConvertFrom-Json
-$schemaVersionAksEdgeConfig = $jsonContent.SchemaVersion
-# Clean up the downloaded release files
-Remove-Item -Path $output -Force
-Remove-Item -Path "C:\temp\AKS-Edge-$latestReleaseTag" -Force -Recurse
+if ($AKSEEPinnedSchemaVersion -ne "useLatest") {
+    $schemaVersionAksEdgeConfig = $AKSEEPinnedSchemaVersion
+}else{
+    $latestReleaseTag = (Invoke-WebRequest $aksEEReleasesUrl | ConvertFrom-Json)[0].tag_name
+    $AKSEEReleaseDownloadUrl = "https://github.com/Azure/AKS-Edge/archive/refs/tags/$latestReleaseTag.zip"
+    $output = Join-Path "C:\temp" "$latestReleaseTag.zip"
+    Invoke-WebRequest $AKSEEReleaseDownloadUrl -OutFile $output
+    Expand-Archive $output -DestinationPath "C:\temp" -Force
+    $AKSEEReleaseConfigFilePath = "C:\temp\AKS-Edge-$latestReleaseTag\tools\aksedge-config.json"
+    $jsonContent = Get-Content -Raw -Path $AKSEEReleaseConfigFilePath | ConvertFrom-Json
+    $schemaVersionAksEdgeConfig = $jsonContent.SchemaVersion
+    # Clean up the downloaded release files
+    Remove-Item -Path $output -Force
+    Remove-Item -Path "C:\temp\AKS-Edge-$latestReleaseTag" -Force -Recurse
+}
 
 # Here string for the json content
 $aideuserConfig = @"
 {
     "SchemaVersion": "$AksEdgeRemoteDeployVersion",
-    "Version": "$schemaVersion",
+    "Version": "$schemaVersionAksEdgeConfig",
     "AksEdgeProduct": "$productName",
     "AksEdgeProductUrl": "",
     "Azure": {
@@ -160,7 +162,7 @@ Set-Content -Path $aksedgejson -Value $aksedgeConfig -Force
 $aksedgeShell = (Get-ChildItem -Path "$workDir" -Filter AksEdgeShell.ps1 -Recurse).FullName
 . $aksedgeShell
 
-# Download, install and deploy AKS EE 
+# Download, install and deploy AKS EE
 Write-Host "Step 2: Download, install and deploy AKS Edge Essentials"
 # invoke the workflow, the json file already stored above.
 $retval = Start-AideWorkflow -jsonFile $aidejson
@@ -201,8 +203,8 @@ az -v
 az login --service-principal --username $Env:appId --password=$Env:password --tenant $Env:tenantId
 
 # Set default subscription to run commands against
-# "subscriptionId" value comes from clientVM.json ARM template, based on which 
-# subscription user deployed ARM template to. This is needed in case Service 
+# "subscriptionId" value comes from clientVM.json ARM template, based on which
+# subscription user deployed ARM template to. This is needed in case Service
 # Principal has access to multiple subscriptions, which can break the automation logic
 az account set --subscription $Env:subscriptionId
 
@@ -344,22 +346,22 @@ $clusterName = "$env:computername-$env:kubernetesDistribution"
 
 # Changing to Client VM wallpaper
 $imgPath = "C:\Temp\wallpaper.png"
-$code = @' 
-using System.Runtime.InteropServices; 
-namespace Win32{ 
-    
-     public class Wallpaper{ 
-        [DllImport("user32.dll", CharSet=CharSet.Auto)] 
-         static extern int SystemParametersInfo (int uAction , int uParam , string lpvParam , int fuWinIni) ; 
-         
-         public static void SetWallpaper(string thePath){ 
-            SystemParametersInfo(20,0,thePath,3); 
+$code = @'
+using System.Runtime.InteropServices;
+namespace Win32{
+
+     public class Wallpaper{
+        [DllImport("user32.dll", CharSet=CharSet.Auto)]
+         static extern int SystemParametersInfo (int uAction , int uParam , string lpvParam , int fuWinIni) ;
+
+         public static void SetWallpaper(string thePath){
+            SystemParametersInfo(20,0,thePath,3);
          }
     }
- } 
+ }
 '@
 
-add-type $code 
+add-type $code
 [Win32.Wallpaper]::SetWallpaper($imgPath)
 
 # Kill the open PowerShell monitoring kubectl get pods
